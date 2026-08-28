@@ -1,0 +1,87 @@
+# =============================================================
+#  NER-SmartLogix-AI  --  local infrastructure
+#  Phase 2 starts the database only. Backend and frontend
+#  services are added in Phase 11 once their Dockerfiles exist.
+#  Values are read from the .env file in this same folder.
+# =============================================================
+services:
+
+  postgis:
+    image: postgis/postgis:16-3.4
+    container_name: ner-postgis
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-nersmartlogix}
+      POSTGRES_USER: ${DB_USERNAME:-nerapp}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?set DB_PASSWORD in .env}
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USERNAME:-nerapp} -d ${POSTGRES_DB:-nersmartlogix}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Optional database UI.  Start with:  docker compose --profile tools up -d
+  pgadmin:
+    image: dpage/pgadmin4:8
+    container_name: ner-pgadmin
+    profiles: ["tools"]
+    restart: unless-stopped
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL:-admin@ner.local}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD:?set PGADMIN_PASSWORD in .env}
+      PGADMIN_CONFIG_SERVER_MODE: "False"
+    ports:
+      - "5050:80"
+    depends_on:
+      postgis:
+        condition: service_healthy
+
+  # ---------------------------------------------------------------------------
+  # Full stack. Start with:  docker compose --profile full up --build
+  # The database alone (the default) is enough while developing with a locally
+  # run backend and `npm run dev`.
+  # ---------------------------------------------------------------------------
+  backend:
+    build: ./backend
+    container_name: ner-backend
+    profiles: ["full"]
+    restart: unless-stopped
+    environment:
+      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILE:-dev}
+      DB_URL: jdbc:postgresql://postgis:5432/${POSTGRES_DB:-nersmartlogix}
+      DB_USERNAME: ${DB_USERNAME:-nerapp}
+      DB_PASSWORD: ${DB_PASSWORD:?set DB_PASSWORD in .env}
+      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in .env}
+      FRONTEND_ORIGIN: ${FRONTEND_ORIGIN:-http://localhost:5173}
+      WEATHER_PROVIDER: ${WEATHER_PROVIDER:-mock}
+      ROUTING_PROVIDER: ${ROUTING_PROVIDER:-osrm}
+      OSRM_BASE_URL: ${OSRM_BASE_URL:-https://router.project-osrm.org}
+      GPS_SIMULATOR_ENABLED: ${GPS_SIMULATOR_ENABLED:-true}
+      SEED_DEMO_DATA: ${SEED_DEMO_DATA:-true}
+      SEED_DEMO_PASSWORD: ${SEED_DEMO_PASSWORD:?set SEED_DEMO_PASSWORD in .env}
+      FILE_STORAGE_PATH: /app/uploads
+    ports:
+      - "8080:8080"
+    volumes:
+      - uploads:/app/uploads
+    depends_on:
+      postgis:
+        condition: service_healthy
+
+  frontend:
+    build: ./frontend
+    container_name: ner-frontend
+    profiles: ["full"]
+    restart: unless-stopped
+    ports:
+      - "5173:80"
+    depends_on:
+      - backend
+
+volumes:
+  pgdata:
+  uploads:

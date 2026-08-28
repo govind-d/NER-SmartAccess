@@ -1,0 +1,25 @@
+# =============================================================
+#  dev profile  --  local development only
+#  Activate with:  -Dspring-boot.run.profiles=dev
+# =============================================================
+spring:
+  jpa:
+    properties:
+      hibernate:
+        format_sql: true
+
+app:
+  weather:
+    provider: mock          # never call a paid API while developing
+  gps-simulator:
+    enabled: true           # vehicles move on the map without manual input
+  seed:
+    demo-data: true         # create demo users, vehicles, deliveries at startup
+
+logging:
+  level:
+    com.ner.smartlogix: DEBUG
+    org.hibernate.SQL: DEBUG
+    # Uncomment to also see the values bound to each "?" in the SQL above:
+    # org.hibernate.orm.jdbc.bind: TRACE
+    org.flywaydb: INFO

@@ -1,0 +1,35 @@
+# ---- Secrets (never commit) ----
+.env
+backend/.env
+!.env.example
+!backend/.env.example
+
+# ---- Java / Maven ----
+target/
+*.class
+*.war
+hs_err_pid*
+
+# ---- Uploads / runtime ----
+backend/uploads/
+logs/
+*.log
+
+# ---- Node / frontend ----
+node_modules/
+dist/
+dist-ssr/
+.vite/
+npm-debug.log*
+
+# ---- IDE ----
+.idea/
+*.iml
+.vscode/
+.settings/
+.classpath
+.project
+
+# ---- OS ----
+Thumbs.db
+.DS_Store

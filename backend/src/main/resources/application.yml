@@ -1,0 +1,120 @@
+# =============================================================
+#  NER-SmartLogix-AI  --  base configuration
+#
+#  RULE: no secret ever appears in this file. Values are read from
+#  environment variables. Secrets are written as ${VAR} with NO default,
+#  so a missing secret stops the application at startup instead of
+#  silently falling back to something weak.
+# =============================================================
+spring:
+  application:
+    name: ner-smartlogix-ai
+
+  datasource:
+    url: ${DB_URL}
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
+    hikari:
+      maximum-pool-size: 10
+      pool-name: ner-pool
+
+  jpa:
+    hibernate:
+      # Flyway owns the schema. Hibernate only CHECKS that the entities match it,
+      # which turns entity/schema drift into a clear startup error.
+      ddl-auto: validate
+    # Keeping the persistence context open during view rendering hides lazy-loading
+    # bugs and holds database connections longer than necessary.
+    open-in-view: false
+    properties:
+      hibernate:
+        format_sql: true
+        jdbc:
+          time_zone: Asia/Kolkata
+          batch_size: 50
+        order_inserts: true
+
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    baseline-on-migrate: true
+
+  servlet:
+    multipart:
+      max-file-size: 5MB
+      max-request-size: 8MB
+
+  jackson:
+    default-property-inclusion: non_null
+    serialization:
+      write-dates-as-timestamps: false
+
+server:
+  port: 8080
+  error:
+    include-message: always
+    include-binding-errors: always
+
+# ---- Application-specific settings, bound to @ConfigurationProperties later ----
+app:
+  jwt:
+    secret: ${JWT_SECRET}
+    access-expiration-ms: ${JWT_ACCESS_EXPIRATION_MS:900000}
+    refresh-expiration-ms: ${JWT_REFRESH_EXPIRATION_MS:604800000}
+  cors:
+    allowed-origin: ${FRONTEND_ORIGIN:http://localhost:5173}
+  storage:
+    path: ${FILE_STORAGE_PATH:./uploads}
+  weather:
+    provider: ${WEATHER_PROVIDER:mock}
+    api-key: ${WEATHER_API_KEY:}
+    base-url: ${WEATHER_API_BASE_URL:https://api.openweathermap.org/data/2.5}
+  routing:
+    provider: ${ROUTING_PROVIDER:osrm}
+    osrm-base-url: ${OSRM_BASE_URL:https://router.project-osrm.org}
+    ors-api-key: ${ORS_API_KEY:}
+  gps-simulator:
+    enabled: ${GPS_SIMULATOR_ENABLED:false}
+    interval-ms: 10000
+  seed:
+    demo-data: ${SEED_DEMO_DATA:false}
+    demo-password: ${SEED_DEMO_PASSWORD:}
+
+  # Weights of the Phase 5 rule engine. They live here, not in Java code, so the
+  # model can be tuned without recompiling - and so the same class can later be
+  # driven by weights learned from data.
+  risk:
+    weights:
+      rainfall: 0.30
+      landslide: 0.20
+      flood: 0.15
+      incident-history: 0.15
+      road-condition: 0.10
+      terrain: 0.10
+    thresholds:
+      medium: 35
+      high: 65
+    route:
+      travel-time: 0.35
+      weather: 0.20
+      road: 0.20
+      incident: 0.15
+      disruption: 0.10
+
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
+    operations-sorter: method
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      show-details: when-authorized
+
+logging:
+  level:
+    com.ner.smartlogix: INFO

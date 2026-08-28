@@ -1,0 +1,44 @@
+/* Leaflet ships its own stylesheet, and a CSS @import must precede every other
+   statement - putting it after the @tailwind directives makes the bundler drop it,
+   and the map tiles then stack on top of each other. */
+@import 'leaflet/dist/leaflet.css';
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer components {
+  .card {
+    @apply bg-white rounded-xl border border-slate-200 shadow-sm p-5;
+  }
+  .btn {
+    @apply inline-flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition
+           disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+  .btn-primary {
+    @apply btn bg-slate-900 text-white hover:bg-slate-700;
+  }
+  .btn-ghost {
+    @apply btn border border-slate-300 text-slate-700 hover:bg-slate-50;
+  }
+  .input {
+    @apply w-full px-3 py-2 rounded-lg border border-slate-300 outline-none
+           focus:ring-2 focus:ring-slate-900/10 focus:border-slate-500;
+  }
+  .label {
+    @apply block text-sm font-medium text-slate-700 mb-1;
+  }
+  .badge {
+    @apply inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border;
+  }
+  .th {
+    @apply px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500;
+  }
+  .td {
+    @apply px-4 py-3 text-sm text-slate-700 border-t border-slate-100;
+  }
+}
+
+body {
+  @apply bg-slate-50 text-slate-900 antialiased;
+}
