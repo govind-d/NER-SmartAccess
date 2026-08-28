@@ -33,3 +33,6 @@ npm-debug.log*
 # ---- OS ----
 Thumbs.db
 .DS_Store
+
+# TypeScript incremental build cache
+*.tsbuildinfo
