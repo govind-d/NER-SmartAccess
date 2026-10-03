@@ -71,7 +71,7 @@ Incident CRUD + photo upload, `IncidentReportedEvent` + listeners (road impact �
 
 ## Phase 7 — Routing & Optimization (3 days)
 
-`RoutingProvider` interface, `OsrmRoutingClient` (RestClient, timeouts, mock fallback), matching route geometry to our roads via `ST_DWithin`, `RouteRiskScorer` with configurable weights, hard-filtering of BLOCKED roads, alternate-route ranking, ETA + predicted delay, `DijkstraRouteFinder` (JGraphT) as the offline fallback, `/routes/**` endpoints.
+`RoutingProvider` interface, `OsrmRoutingProvider` (RestClient, timeouts), matching route geometry to our roads via `ST_DWithin`, `RouteRiskScorer` with configurable weights, hard-filtering of BLOCKED roads, alternate-route ranking, ETA + predicted delay, `InternalGraphRoutingProvider` (hand-written Dijkstra, no graph library) and `MockRoutingProvider` as fallbacks, `/routes/**` endpoints.
 
 **Deliverable:** `POST /routes/recommend` returns a best route plus alternates, with a rejection reason for the blocked one.
 
@@ -126,7 +126,7 @@ Minimum viable submission if time runs short: Phases 2, 3, 4, 5, 6, 9 — that s
 |---|---|---|
 | PostGIS + Hibernate spatial setup fights back | Medium | Phase 2 does nothing else; Testcontainers proves it early |
 | No real NER road geometry available | High | Seed simplified LineStrings from OSM exports; schema unchanged when real data arrives |
-| Public OSRM rate-limits or is down | Medium | `MockRoutingProvider` + local OSRM compose profile + JGraphT fallback |
+| Public OSRM rate-limits or is down | Medium | `MockRoutingProvider` + local OSRM compose profile + the internal Dijkstra fallback |
 | Weather API key/quota issues | Medium | `WEATHER_PROVIDER=mock` is the default in dev |
 | Scope creep (SMS, ML, multi-tenant) | High | Interfaces are in place; implementations are explicitly deferred and documented as future work |
 | Java 25 vs Spring Boot 3.x mismatch | Medium | Decided in Phase 0 (JDK 21 + Boot 3.5.x recommended) |

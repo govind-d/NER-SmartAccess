@@ -2,7 +2,7 @@
 
 An AI-powered Smart Logistics and Accessibility Intelligence Platform for the North Eastern Region (NER), India — real-time route monitoring, disruption prediction, GIS-based accessibility insights, GPS vehicle tracking, risk-aware routing and offline field reporting.
 
-**Stack:** Java 21 · Spring Boot 3.5 · PostgreSQL 16 + PostGIS · React 18 + TypeScript + Tailwind + Leaflet · **No Python anywhere**, including the AI module.
+**Stack:** Java 21 · Spring Boot 3.5 · PostgreSQL 17 + PostGIS · React 18 + TypeScript + Tailwind + Leaflet · **No Python anywhere**, including the AI module.
 
 ---
 
@@ -16,7 +16,7 @@ An AI-powered Smart Logistics and Accessibility Intelligence Platform for the No
 | 4 | Districts, roads, bridges, vehicles, deliveries + GeoJSON layers | `service/impl/`, `controller/`, `service/GeoJsonService.java` |
 | 5 | AI risk engine — 6 weighted rules in Java | `ml/` |
 | 6 | Incidents, alerts, notifications, WebSocket, offline sync | `event/`, `notification/`, `websocket/`, `service/impl/IncidentServiceImpl.java` |
-| 7 | Risk-aware routing (OSRM + Dijkstra fallback + scorer) | `routing/`, `service/impl/RouteServiceImpl.java` |
+| 7 | Risk-aware routing (OSRM + hand-written Dijkstra fallback + scorer) | `routing/`, `service/impl/RouteServiceImpl.java` |
 | 8 | GPS tracking, simulator, delivery lifecycle, delay detection | `integration/gps/` |
 | 9–10 | React frontend, live map, dashboard, offline PWA | [`frontend/src`](frontend/src) |
 | 11 | Tests, Dockerfiles, documentation | `backend/src/test`, `*/Dockerfile`, `docs/` |
