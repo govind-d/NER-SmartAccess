@@ -94,9 +94,9 @@ export function NerMap({ highlightPath, alternatePaths, height = '75vh' }: NerMa
 
   return (
     <div className="relative">
-      <div className="absolute top-3 right-3 z-[500] card py-3 px-4 space-y-1 text-sm">
-        <p className="font-semibold text-xs uppercase tracking-wide text-slate-500 mb-2">
-          Layers
+      <div className="absolute top-3 right-3 z-[500] card py-3 px-4 space-y-1 text-sm shadow-lg">
+        <p className="eyebrow mb-2">
+          Map layers
         </p>
         {(Object.keys(layers) as (keyof Layers)[]).map((key) => (
           <label key={key} className="flex items-center gap-2 capitalize cursor-pointer">
@@ -119,7 +119,7 @@ export function NerMap({ highlightPath, alternatePaths, height = '75vh' }: NerMa
       </div>
 
       <MapContainer center={NER_CENTER} zoom={7} style={{ height, width: '100%' }}
-                    className="rounded-xl overflow-hidden border border-slate-200">
+                    className="rounded-2xl overflow-hidden border border-slate-200 shadow-sm">
         <TileLayer
           attribution='&copy; OpenStreetMap contributors'
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"

@@ -36,3 +36,8 @@ Thumbs.db
 
 # TypeScript incremental build cache
 *.tsbuildinfo
+
+# Local-only environment overrides
+.env.local
+*.env.local
+.env.*.local
