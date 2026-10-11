@@ -3,6 +3,8 @@ import { incidentsApi } from '../services/endpoints'
 import { errorMessage } from '../services/api'
 import { newClientUuid, offlineDb } from '../utils/offlineDb'
 import { useOfflineSync } from '../hooks/useOfflineSync'
+import { EmptyState, PageHeader, StatusBadge } from '../components/ui'
+import { IconPin, IconWifiOff } from '../components/icons'
 import type { IncidentType, Severity } from '../types'
 import { formatDateTime, humanise } from '../utils/format'
 
@@ -10,7 +12,19 @@ const INCIDENT_TYPES: IncidentType[] = [
   'LANDSLIDE', 'FLOOD', 'ROAD_DAMAGE', 'BRIDGE_DAMAGE',
   'TRAFFIC_CONGESTION', 'ACCIDENT', 'OTHER',
 ]
-const SEVERITIES: Severity[] = ['LOW', 'MEDIUM', 'HIGH', 'CRITICAL']
+
+/**
+ * Severity, with its consequence stated next to it.
+ *
+ * An officer choosing CRITICAL is closing a national highway. That is not something to
+ * discover afterwards, so each option says what the backend will do with it.
+ */
+const SEVERITIES: { value: Severity; effect: string }[] = [
+  { value: 'LOW', effect: 'logged only' },
+  { value: 'MEDIUM', effect: 'marks the road partially accessible' },
+  { value: 'HIGH', effect: 'marks the road high risk' },
+  { value: 'CRITICAL', effect: 'closes the road immediately' },
+]
 
 /**
  * The field officer's form - the offline-first heart of the application.
@@ -35,7 +49,8 @@ export default function ReportIncident() {
   const [photo, setPhoto] = useState<File | null>(null)
   const [locating, setLocating] = useState(false)
   const [busy, setBusy] = useState(false)
-  const [message, setMessage] = useState<{ kind: 'ok' | 'queued' | 'error'; text: string } | null>(null)
+  const [message, setMessage] =
+    useState<{ kind: 'ok' | 'queued' | 'error'; text: string } | null>(null)
 
   useEffect(() => {
     locate()
@@ -127,23 +142,31 @@ export default function ReportIncident() {
   const coordinatesMissing = !latitude || !longitude
 
   return (
-    <div className="space-y-6 max-w-3xl">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight text-slate-900">
-          Report an incident
-        </h1>
-        <p className="text-sm text-slate-500">
-          Works without a network. Reports are stored on this device and sent when the
-          signal returns.
-        </p>
-      </div>
+    <div className="space-y-5 max-w-4xl">
+      <PageHeader
+        title="Report an incident"
+        subtitle="Works without a network. Reports are stored on this device and sent when the signal returns."
+        badge={
+          online ? (
+            <span className="badge bg-emerald-50 text-emerald-700 border-emerald-200">
+              <span className="dot bg-emerald-500" />
+              Online
+            </span>
+          ) : (
+            <span className="badge bg-slate-800 text-slate-100 border-slate-700">
+              <IconWifiOff width={12} height={12} />
+              Offline
+            </span>
+          )
+        }
+      />
 
       {message && (
         <div
           className={
-            'rounded-lg border px-3 py-2 text-sm ' +
+            'rounded-xl border px-3.5 py-2.5 text-sm ' +
             (message.kind === 'ok'
-              ? 'bg-green-50 border-green-200 text-green-800'
+              ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
               : message.kind === 'queued'
                 ? 'bg-amber-50 border-amber-200 text-amber-900'
                 : 'bg-red-50 border-red-200 text-red-700')
@@ -153,42 +176,55 @@ export default function ReportIncident() {
         </div>
       )}
 
-      <form onSubmit={submit} className="card space-y-4">
-        <div className="grid sm:grid-cols-2 gap-4">
-          <div>
-            <label className="label" htmlFor="type">Incident type</label>
-            <select
-              id="type"
-              className="input"
-              value={incidentType}
-              onChange={(e) => setIncidentType(e.target.value as IncidentType)}
-            >
-              {INCIDENT_TYPES.map((type) => (
-                <option key={type} value={type}>{humanise(type)}</option>
-              ))}
-            </select>
-          </div>
-
-          <div>
-            <label className="label" htmlFor="severity">Severity</label>
-            <select
-              id="severity"
-              className="input"
-              value={severity}
-              onChange={(e) => setSeverity(e.target.value as Severity)}
-            >
-              {SEVERITIES.map((level) => (
-                <option key={level} value={level}>{humanise(level)}</option>
-              ))}
-            </select>
-            <p className="mt-1 text-xs text-slate-500">
-              CRITICAL closes the road automatically; HIGH marks it high risk.
-            </p>
+      <form onSubmit={submit} className="card space-y-6">
+        {/* ---------------- what ---------------- */}
+        <div>
+          <p className="eyebrow mb-2.5">What has happened</p>
+          <div className="flex flex-wrap gap-2">
+            {INCIDENT_TYPES.map((type) => (
+              <button
+                key={type}
+                type="button"
+                onClick={() => setIncidentType(type)}
+                className={
+                  'badge transition ' +
+                  (incidentType === type
+                    ? 'bg-slate-900 text-white border-slate-900'
+                    : 'bg-white text-slate-600 border-slate-300 hover:border-slate-400')
+                }
+              >
+                {humanise(type)}
+              </button>
+            ))}
           </div>
         </div>
 
+        {/* ---------------- how bad ---------------- */}
         <div>
-          <label className="label" htmlFor="description">What has happened</label>
+          <p className="eyebrow mb-2.5">How serious</p>
+          <div className="grid sm:grid-cols-2 gap-2">
+            {SEVERITIES.map((option) => (
+              <button
+                key={option.value}
+                type="button"
+                onClick={() => setSeverity(option.value)}
+                className={
+                  'text-left rounded-xl border px-3 py-2.5 transition ' +
+                  (severity === option.value
+                    ? 'border-slate-900 bg-slate-50 ring-2 ring-slate-900/10'
+                    : 'border-slate-200 hover:border-slate-300')
+                }
+              >
+                <StatusBadge value={option.value} />
+                <p className="mt-1.5 text-xs text-slate-500">{option.effect}</p>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* ---------------- description ---------------- */}
+        <div>
+          <label className="label" htmlFor="description">Description</label>
           <textarea
             id="description"
             className="input h-24"
@@ -198,79 +234,118 @@ export default function ReportIncident() {
           />
         </div>
 
-        <div className="grid sm:grid-cols-3 gap-4 items-end">
-          <div>
-            <label className="label" htmlFor="lat">Latitude</label>
-            <input id="lat" className="input" value={latitude}
-                   onChange={(e) => setLatitude(e.target.value)} required />
+        {/* ---------------- where ---------------- */}
+        <div>
+          <p className="eyebrow mb-2.5">Where</p>
+          <div className="grid sm:grid-cols-3 gap-3 items-end">
+            <div>
+              <label className="label" htmlFor="lat">Latitude</label>
+              <input id="lat" className="input tabular" value={latitude}
+                     onChange={(e) => setLatitude(e.target.value)} required />
+            </div>
+            <div>
+              <label className="label" htmlFor="lon">Longitude</label>
+              <input id="lon" className="input tabular" value={longitude}
+                     onChange={(e) => setLongitude(e.target.value)} required />
+            </div>
+            <button type="button" className="btn-ghost py-2.5" onClick={locate}
+                    disabled={locating}>
+              <IconPin />
+              {locating ? 'Locating...' : 'Use my location'}
+            </button>
           </div>
-          <div>
-            <label className="label" htmlFor="lon">Longitude</label>
-            <input id="lon" className="input" value={longitude}
-                   onChange={(e) => setLongitude(e.target.value)} required />
-          </div>
-          <button type="button" className="btn-ghost justify-center" onClick={locate}
-                  disabled={locating}>
-            {locating ? 'Locating...' : 'Use my location'}
-          </button>
+          <p className="mt-1.5 text-xs text-slate-500">
+            The server matches these coordinates to the nearest monitored road within
+            500 m, so you do not need to know the road code.
+          </p>
         </div>
 
+        {/* ---------------- photo ---------------- */}
         <div>
           <label className="label" htmlFor="photo">Photo (optional)</label>
-          <input
-            id="photo"
-            type="file"
-            accept="image/jpeg,image/png,image/webp"
-            className="input"
-            onChange={(e) => setPhoto(e.target.files?.[0] ?? null)}
-          />
-          <p className="mt-1 text-xs text-slate-500">
+          <div className="flex items-center gap-3">
+            <input
+              id="photo"
+              type="file"
+              accept="image/jpeg,image/png,image/webp"
+              className="input"
+              onChange={(e) => setPhoto(e.target.files?.[0] ?? null)}
+            />
+            {photo && (
+              <img
+                src={URL.createObjectURL(photo)}
+                alt=""
+                className="w-14 h-14 rounded-xl object-cover border border-slate-200 shrink-0"
+              />
+            )}
+          </div>
+          <p className="mt-1.5 text-xs text-slate-500">
             Photos are only sent when online; the text report is queued either way.
           </p>
         </div>
 
-        <div className="flex items-center gap-3 pt-2">
-          <button className="btn-primary" disabled={busy || coordinatesMissing}>
-            {busy ? 'Submitting...' : online ? 'Submit report' : 'Save for later'}
+        <div className="flex flex-wrap items-center gap-3 pt-1">
+          <button className="btn-primary px-6 py-2.5" disabled={busy || coordinatesMissing}>
+            {busy ? 'Submitting...' : online ? 'Submit report' : 'Save on this device'}
           </button>
-          <span className={'text-xs ' + (online ? 'text-green-600' : 'text-amber-600')}>
-            {online ? 'Online' : 'Offline - reports will be queued'}
-          </span>
+          {coordinatesMissing && (
+            <span className="text-xs text-amber-700">
+              Coordinates are required - press "Use my location"
+            </span>
+          )}
         </div>
       </form>
 
-      {/* The queue, visible so the officer can see exactly what has not gone up yet. */}
-      <div className="card">
-        <div className="flex items-center justify-between">
-          <h2 className="font-semibold text-slate-900">
-            Waiting to sync ({pendingCount})
-          </h2>
-          <button className="btn-ghost py-1 text-xs" onClick={() => void sync()}
+      {/* ---------------- the queue ---------------- */}
+      <div className="card p-0 overflow-hidden">
+        <div className="px-5 py-3.5 flex items-center justify-between border-b
+                        border-slate-100">
+          <div className="flex items-center gap-2">
+            <h2 className="panel-title">Waiting to sync</h2>
+            {pendingCount > 0 && (
+              <span className="badge bg-amber-50 text-amber-700 border-amber-200 tabular">
+                {pendingCount}
+              </span>
+            )}
+          </div>
+          <button className="btn-ghost py-1 px-2.5 text-xs" onClick={() => void sync()}
                   disabled={!online || syncing || pendingCount === 0}>
             {syncing ? 'Syncing...' : 'Sync now'}
           </button>
         </div>
 
         {pending.length === 0 ? (
-          <p className="mt-3 text-sm text-slate-500">
-            Nothing pending. Every report on this device has reached the server.
-          </p>
+          <EmptyState
+            title="Nothing pending"
+            body="Every report on this device has reached the server."
+          />
         ) : (
-          <ul className="mt-3 divide-y divide-slate-100">
+          <ul className="divide-y divide-slate-100">
             {pending.map((report) => (
-              <li key={report.clientUuid} className="py-2 text-sm">
-                <span className="font-medium">{humanise(report.reportType)}</span>
-                <span className="text-slate-500">
-                  {' '}at {report.latitude.toFixed(4)}, {report.longitude.toFixed(4)}
-                </span>
-                <span className="block text-xs text-slate-400">
-                  captured {formatDateTime(report.capturedAt)}
-                  {report.lastError ? ' - last error: ' + report.lastError : ''}
-                </span>
+              <li key={report.clientUuid} className="px-5 py-3 flex items-start gap-3">
+                <span className="dot bg-amber-500 mt-1.5 shrink-0" />
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-medium text-slate-900">
+                    {humanise(report.reportType)}
+                    <span className="font-normal text-slate-500 tabular">
+                      {' '}at {report.latitude.toFixed(4)}, {report.longitude.toFixed(4)}
+                    </span>
+                  </p>
+                  <p className="text-xs text-slate-400">
+                    captured {formatDateTime(report.capturedAt)}
+                    {report.lastError ? ` · last error: ${report.lastError}` : ''}
+                  </p>
+                </div>
               </li>
             ))}
           </ul>
         )}
+
+        <div className="px-5 py-3 border-t border-slate-100 bg-slate-50/50 text-xs
+                        text-slate-500">
+          Queued in IndexedDB and keyed by a client-generated UUID, so re-sending the
+          same report can never create a duplicate.
+        </div>
       </div>
     </div>
   )
