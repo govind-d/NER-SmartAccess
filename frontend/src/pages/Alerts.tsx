@@ -3,8 +3,26 @@ import { alertsApi } from '../services/endpoints'
 import { useAuth } from '../context/AuthContext'
 import { useWebSocket } from '../hooks/useWebSocket'
 import { errorMessage } from '../services/api'
+import {
+  EmptyState, ErrorNote, LiveBadge, PageHeader, StatusBadge,
+} from '../components/ui'
+import { IconBell } from '../components/icons'
 import type { Alert } from '../types'
-import { formatDateTime, formatRelative, humanise, severityBadge } from '../utils/format'
+import { formatDateTime, formatRelative, humanise } from '../utils/format'
+
+/**
+ * The alert register.
+ *
+ * Each alert is a card with a severity stripe down its left edge, so the page can be
+ * triaged by colour at a glance before any of it is read. New alerts arrive over
+ * WebSocket and are prepended live.
+ */
+const STRIPE: Record<string, string> = {
+  CRITICAL: 'border-l-red-500',
+  HIGH: 'border-l-orange-500',
+  MEDIUM: 'border-l-amber-400',
+  LOW: 'border-l-slate-300',
+}
 
 export default function Alerts() {
   const { hasRole } = useAuth()
@@ -13,11 +31,14 @@ export default function Alerts() {
   const [alerts, setAlerts] = useState<Alert[]>([])
   const [showInactive, setShowInactive] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [loading, setLoading] = useState(true)
 
   const load = useCallback(() => {
+    setLoading(true)
     alertsApi.list({ active: !showInactive, size: 50 })
       .then((page) => setAlerts(page.content))
       .catch((err) => setError(errorMessage(err)))
+      .finally(() => setLoading(false))
   }, [showInactive])
 
   useEffect(load, [load])
@@ -27,6 +48,7 @@ export default function Alerts() {
   })
 
   async function deactivate(id: number) {
+    setError(null)
     try {
       await alertsApi.deactivate(id)
       load()
@@ -35,62 +57,93 @@ export default function Alerts() {
     }
   }
 
-  return (
-    <div className="space-y-4">
-      <div className="flex items-end justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight text-slate-900">Alerts</h1>
-          <p className="text-sm text-slate-500">
-            Everything the platform decided people needed to know about
-          </p>
-        </div>
-        <label className="flex items-center gap-2 text-sm">
-          <input type="checkbox" checked={showInactive}
-                 onChange={(e) => setShowInactive(e.target.checked)} />
-          Show closed alerts
-        </label>
-      </div>
+  const critical = alerts.filter((a) => a.severity === 'CRITICAL').length
 
-      {error && (
-        <div className="rounded-lg bg-red-50 border border-red-200 px-3 py-2 text-sm text-red-700">
-          {error}
+  return (
+    <div className="space-y-5">
+      <PageHeader
+        title="Alerts"
+        subtitle={
+          critical > 0
+            ? `${alerts.length} alert(s) · ${critical} critical`
+            : 'Everything the platform decided people needed to know about'
+        }
+        badge={<LiveBadge label="Pushed live" />}
+        actions={
+          <label className="btn-ghost cursor-pointer">
+            <input
+              type="checkbox"
+              checked={showInactive}
+              onChange={(e) => setShowInactive(e.target.checked)}
+            />
+            Show closed
+          </label>
+        }
+      />
+
+      {error && <ErrorNote message={error} />}
+
+      {loading ? (
+        <div className="space-y-3">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <div key={i} className="card h-24 animate-pulse bg-slate-100/60" />
+          ))}
+        </div>
+      ) : alerts.length === 0 ? (
+        <div className="card p-0">
+          <EmptyState
+            icon={<IconBell />}
+            title={showInactive ? 'No closed alerts' : 'No active alerts'}
+            body="Every corridor is behaving. Alerts appear here the moment an incident is reported or rainfall crosses a threshold."
+          />
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {alerts.map((alert) => (
+            <div
+              key={alert.id}
+              className={
+                'card card-hover border-l-4 flex items-start gap-4 ' +
+                (STRIPE[alert.severity] ?? STRIPE.LOW) +
+                (alert.active ? '' : ' opacity-60')
+              }
+            >
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <StatusBadge value={alert.severity} />
+                  <span className="badge bg-slate-100 text-slate-600 border-slate-200">
+                    {humanise(alert.alertType)}
+                  </span>
+                  {!alert.active && (
+                    <span className="badge bg-slate-100 text-slate-500 border-slate-200">
+                      closed
+                    </span>
+                  )}
+                </div>
+
+                <p className="mt-2 font-semibold text-slate-900">{alert.title}</p>
+                <p className="mt-1 text-sm text-slate-600">{alert.message}</p>
+
+                <div className="mt-2.5 flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-400">
+                  {alert.districtName && <span>{alert.districtName}</span>}
+                  {alert.roadCode && <span className="font-mono">{alert.roadCode}</span>}
+                  <span>raised {formatRelative(alert.createdAt)}</span>
+                  {alert.expiresAt && <span>expires {formatDateTime(alert.expiresAt)}</span>}
+                </div>
+              </div>
+
+              {canManage && alert.active && (
+                <button
+                  className="btn-ghost py-1 px-2.5 text-xs shrink-0"
+                  onClick={() => void deactivate(alert.id)}
+                >
+                  Close
+                </button>
+              )}
+            </div>
+          ))}
         </div>
       )}
-
-      <div className="space-y-3">
-        {alerts.map((alert) => (
-          <div key={alert.id} className="card flex items-start gap-4">
-            <span className={'badge shrink-0 ' + severityBadge(alert.severity)}>
-              {alert.severity}
-            </span>
-
-            <div className="min-w-0 flex-1">
-              <p className="font-semibold text-slate-900">{alert.title}</p>
-              <p className="mt-1 text-sm text-slate-600">{alert.message}</p>
-              <p className="mt-2 text-xs text-slate-400">
-                {humanise(alert.alertType)}
-                {alert.districtName ? ' - ' + alert.districtName : ''}
-                {alert.roadCode ? ' - ' + alert.roadCode : ''}
-                {' - raised ' + formatRelative(alert.createdAt)}
-                {alert.expiresAt ? ' - expires ' + formatDateTime(alert.expiresAt) : ''}
-              </p>
-            </div>
-
-            {canManage && alert.active && (
-              <button className="btn-ghost py-1 text-xs shrink-0"
-                      onClick={() => void deactivate(alert.id)}>
-                Close
-              </button>
-            )}
-          </div>
-        ))}
-
-        {alerts.length === 0 && (
-          <div className="card text-sm text-slate-500">
-            No alerts. Every corridor is behaving.
-          </div>
-        )}
-      </div>
     </div>
   )
 }

@@ -1,6 +1,10 @@
 import { useEffect, useState } from 'react'
 import { vehiclesApi } from '../services/endpoints'
 import { useWebSocket } from '../hooks/useWebSocket'
+import {
+  Avatar, EmptyState, LiveBadge, PageHeader, SkeletonRows, StatusBadge, TableCard,
+} from '../components/ui'
+import { IconTruck } from '../components/icons'
 import type { Vehicle, VehicleLocation } from '../types'
 import { formatRelative, humanise } from '../utils/format'
 
@@ -19,60 +23,88 @@ export default function Vehicles() {
     setPositions((current) => ({ ...current, [position.vehicleId]: position }))
   })
 
-  if (loading) {
-    return <p className="text-slate-500">Loading fleet...</p>
-  }
+  const moving = Object.values(positions).filter((p) => (p.speedKmph ?? 0) > 1).length
 
   return (
-    <div className="space-y-4">
-      <h1 className="text-2xl font-semibold tracking-tight text-slate-900">Fleet</h1>
+    <div className="space-y-5">
+      <PageHeader
+        title="Fleet"
+        subtitle={`${vehicles.length} vehicle(s) registered${moving ? ` · ${moving} moving now` : ''}`}
+        badge={<LiveBadge label="Tracking" />}
+      />
 
-      <div className="card p-0 overflow-hidden">
-        <table className="w-full">
-          <thead className="bg-slate-50">
-            <tr>
-              <th className="th">Vehicle</th>
-              <th className="th">Type</th>
-              <th className="th">Driver</th>
-              <th className="th">Capacity</th>
-              <th className="th">Speed</th>
-              <th className="th">Last seen</th>
-              <th className="th">State</th>
-            </tr>
-          </thead>
-          <tbody>
-            {vehicles.map((vehicle) => {
-              const live = positions[vehicle.id]
-              return (
-                <tr key={vehicle.id} className="hover:bg-slate-50">
-                  <td className="td font-medium">{vehicle.vehicleNumber}</td>
-                  <td className="td">{humanise(vehicle.vehicleType)}</td>
-                  <td className="td">{vehicle.driverName ?? 'Unassigned'}</td>
-                  <td className="td">{vehicle.capacityTons ?? '-'} t</td>
-                  <td className="td">
-                    {live?.speedKmph !== undefined
-                      ? Math.round(live.speedKmph) + ' km/h'
-                      : '-'}
-                  </td>
-                  <td className="td">
-                    {formatRelative(live?.recordedAt ?? vehicle.lastSeenAt)}
-                  </td>
-                  <td className="td">
-                    <span className={'badge ' + (vehicle.active
-                      ? 'bg-green-100 text-green-800 border-green-300'
-                      : 'bg-slate-100 text-slate-600 border-slate-300')}>
-                      {vehicle.active ? 'Active' : 'Inactive'}
+      <TableCard
+        isEmpty={!loading && vehicles.length === 0}
+        empty={
+          <EmptyState
+            icon={<IconTruck />}
+            title="No vehicles registered"
+            body="A logistics manager can add vehicles and assign drivers to them."
+          />
+        }
+        footer={vehicles.length > 0
+          ? 'Speed and last-seen update over WebSocket as GPS pings arrive.'
+          : undefined}
+        head={
+          <>
+            <th className="th">Vehicle</th>
+            <th className="th">Type</th>
+            <th className="th">Driver</th>
+            <th className="th">Capacity</th>
+            <th className="th">Speed</th>
+            <th className="th">Last seen</th>
+            <th className="th">State</th>
+          </>
+        }
+      >
+        {loading ? (
+          <SkeletonRows rows={5} cols={7} />
+        ) : (
+          vehicles.map((vehicle) => {
+            const live = positions[vehicle.id]
+            const speed = live?.speedKmph
+            return (
+              <tr key={vehicle.id} className="row-hover">
+                <td className="td">
+                  <span className="font-medium font-mono text-slate-900">
+                    {vehicle.vehicleNumber}
+                  </span>
+                </td>
+                <td className="td">{humanise(vehicle.vehicleType)}</td>
+                <td className="td">
+                  {vehicle.driverName ? (
+                    <span className="flex items-center gap-2">
+                      <Avatar name={vehicle.driverName} />
+                      <span>{vehicle.driverName}</span>
                     </span>
-                  </td>
-                </tr>
-              )
-            })}
-          </tbody>
-        </table>
-        {vehicles.length === 0 && (
-          <p className="p-6 text-sm text-slate-500">No vehicles registered yet.</p>
+                  ) : (
+                    <span className="text-slate-400">Unassigned</span>
+                  )}
+                </td>
+                <td className="td tabular">
+                  {vehicle.capacityTons != null ? `${vehicle.capacityTons} t` : '-'}
+                </td>
+                <td className="td tabular">
+                  {speed != null ? (
+                    <span className="flex items-center gap-1.5">
+                      <span className={`dot ${speed > 1 ? 'bg-emerald-500' : 'bg-slate-300'}`} />
+                      {Math.round(speed)} km/h
+                    </span>
+                  ) : (
+                    <span className="text-slate-400">-</span>
+                  )}
+                </td>
+                <td className="td text-slate-500">
+                  {formatRelative(live?.recordedAt ?? vehicle.lastSeenAt)}
+                </td>
+                <td className="td">
+                  <StatusBadge value={vehicle.active ? 'ACTIVE' : 'INACTIVE'} />
+                </td>
+              </tr>
+            )
+          })
         )}
-      </div>
+      </TableCard>
     </div>
   )
 }

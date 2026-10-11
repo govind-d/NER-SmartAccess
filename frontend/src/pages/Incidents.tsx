@@ -3,8 +3,12 @@ import { incidentsApi } from '../services/endpoints'
 import { useAuth } from '../context/AuthContext'
 import { useWebSocket } from '../hooks/useWebSocket'
 import { errorMessage } from '../services/api'
+import {
+  EmptyState, ErrorNote, FilterBar, LiveBadge, PageHeader, SkeletonCards, StatusBadge,
+} from '../components/ui'
+import { IconAlertTriangle } from '../components/icons'
 import type { Incident, IncidentStatus, IncidentType, Severity } from '../types'
-import { formatDateTime, formatRelative, humanise, severityBadge } from '../utils/format'
+import { formatDateTime, formatRelative, humanise } from '../utils/format'
 
 const TYPES: IncidentType[] = [
   'LANDSLIDE', 'FLOOD', 'ROAD_DAMAGE', 'BRIDGE_DAMAGE',
@@ -13,6 +17,15 @@ const TYPES: IncidentType[] = [
 const STATUSES: IncidentStatus[] = [
   'REPORTED', 'VERIFIED', 'IN_PROGRESS', 'RESOLVED', 'REJECTED',
 ]
+const SEVERITIES: Severity[] = ['LOW', 'MEDIUM', 'HIGH', 'CRITICAL']
+
+/** Severity stripe down the left edge, so the grid triages by colour before reading. */
+const STRIPE: Record<Severity, string> = {
+  CRITICAL: 'border-l-red-500',
+  HIGH: 'border-l-orange-500',
+  MEDIUM: 'border-l-amber-400',
+  LOW: 'border-l-slate-300',
+}
 
 /**
  * The incident register.
@@ -55,6 +68,7 @@ export default function Incidents() {
   })
 
   async function verify(id: number) {
+    setError(null)
     try {
       await incidentsApi.verify(id)
       load()
@@ -63,96 +77,130 @@ export default function Incidents() {
     }
   }
 
-  return (
-    <div className="space-y-4">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight text-slate-900">Incidents</h1>
-        <p className="text-sm text-slate-500">
-          Disruptions reported from the field, newest first
-        </p>
-      </div>
+  const critical = incidents.filter((i) => i.severity === 'CRITICAL').length
+  const filtered = Boolean(type || status || severity)
 
-      <div className="flex flex-wrap gap-3">
-        <select className="input w-48" value={type}
+  return (
+    <div className="space-y-5">
+      <PageHeader
+        title="Incidents"
+        subtitle={
+          critical > 0
+            ? `${incidents.length} report(s) · ${critical} critical`
+            : 'Disruptions reported from the field, newest first'
+        }
+        badge={<LiveBadge label="Pushed live" />}
+      />
+
+      <FilterBar>
+        <select className="input w-44" value={type}
                 onChange={(e) => setType(e.target.value as IncidentType | '')}>
           <option value="">All types</option>
           {TYPES.map((t) => <option key={t} value={t}>{humanise(t)}</option>)}
         </select>
-        <select className="input w-48" value={status}
+        <select className="input w-40" value={status}
                 onChange={(e) => setStatus(e.target.value as IncidentStatus | '')}>
           <option value="">All statuses</option>
           {STATUSES.map((s) => <option key={s} value={s}>{humanise(s)}</option>)}
         </select>
-        <select className="input w-40" value={severity}
+        <select className="input w-36" value={severity}
                 onChange={(e) => setSeverity(e.target.value as Severity | '')}>
           <option value="">All severities</option>
-          {(['LOW', 'MEDIUM', 'HIGH', 'CRITICAL'] as Severity[]).map((s) => (
-            <option key={s} value={s}>{humanise(s)}</option>
-          ))}
+          {SEVERITIES.map((s) => <option key={s} value={s}>{humanise(s)}</option>)}
         </select>
-      </div>
+        {filtered && (
+          <button
+            className="text-xs text-slate-500 hover:text-slate-900 underline underline-offset-2"
+            onClick={() => { setType(''); setStatus(''); setSeverity('') }}
+          >
+            clear
+          </button>
+        )}
+      </FilterBar>
 
-      {error && (
-        <div className="rounded-lg bg-red-50 border border-red-200 px-3 py-2 text-sm text-red-700">
-          {error}
+      {error && <ErrorNote message={error} />}
+
+      {loading ? (
+        <SkeletonCards count={6} />
+      ) : incidents.length === 0 ? (
+        <div className="card p-0">
+          <EmptyState
+            icon={<IconAlertTriangle />}
+            title={filtered ? 'No incidents match these filters' : 'No incidents reported'}
+            body={
+              filtered
+                ? 'Clear the filters to see the whole register.'
+                : 'Field officers report landslides, floods and road damage from the Report incident page.'
+            }
+          />
         </div>
-      )}
-
-      <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-4">
-        {incidents.map((incident) => (
-          <div key={incident.id} className="card">
-            <div className="flex items-start justify-between gap-2">
-              <span className={'badge ' + severityBadge(incident.severity)}>
-                {incident.severity}
-              </span>
-              <span className="text-xs text-slate-400">
-                {formatRelative(incident.occurredAt)}
-              </span>
-            </div>
-
-            <h3 className="mt-2 font-semibold text-slate-900">
-              {humanise(incident.incidentType)}
-            </h3>
-            <p className="mt-1 text-sm text-slate-600">
-              {incident.description || 'No description given'}
-            </p>
-
-            <dl className="mt-3 text-xs text-slate-500 space-y-0.5">
-              <div>Road: {incident.roadName ?? 'not matched to a monitored road'}</div>
-              <div>District: {incident.districtName ?? 'unknown'}</div>
-              <div>
-                Location: {incident.latitude.toFixed(4)}, {incident.longitude.toFixed(4)}
+      ) : (
+        <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-4">
+          {incidents.map((incident) => (
+            <div
+              key={incident.id}
+              className={'card card-hover border-l-4 ' + STRIPE[incident.severity]}
+            >
+              <div className="flex items-start justify-between gap-2">
+                <StatusBadge value={incident.severity} />
+                <span className="text-xs text-slate-400">
+                  {formatRelative(incident.occurredAt)}
+                </span>
               </div>
-              <div>Reported by: {incident.reportedByName ?? 'unknown'}</div>
-              <div>Occurred: {formatDateTime(incident.occurredAt)}</div>
-            </dl>
 
-            {incident.photoUrl && (
-              <img
-                src={incident.photoUrl}
-                alt="Incident"
-                className="mt-3 rounded-lg border border-slate-200 max-h-40 w-full object-cover"
-              />
-            )}
+              <h3 className="mt-2.5 font-semibold text-slate-900">
+                {humanise(incident.incidentType)}
+              </h3>
+              <p className="mt-1 text-sm text-slate-600 line-clamp-2">
+                {incident.description || 'No description given'}
+              </p>
 
-            <div className="mt-3 flex items-center justify-between">
-              <span className="badge bg-slate-100 text-slate-700 border-slate-300">
-                {humanise(incident.status)}
-              </span>
-              {canVerify && incident.status === 'REPORTED' && (
-                <button className="btn-ghost py-1 text-xs"
-                        onClick={() => void verify(incident.id)}>
-                  Verify
-                </button>
+              {incident.photoUrl && (
+                <img
+                  src={incident.photoUrl}
+                  alt=""
+                  className="mt-3 rounded-xl border border-slate-200 h-36 w-full object-cover"
+                />
               )}
-            </div>
-          </div>
-        ))}
-      </div>
 
-      {!loading && incidents.length === 0 && (
-        <div className="card text-sm text-slate-500">
-          No incidents match these filters.
+              <dl className="mt-3 space-y-1 text-xs">
+                <div className="flex gap-2">
+                  <dt className="text-slate-400 w-16 shrink-0">Road</dt>
+                  <dd className="text-slate-600 truncate">
+                    {incident.roadName ?? 'not matched to a monitored road'}
+                  </dd>
+                </div>
+                <div className="flex gap-2">
+                  <dt className="text-slate-400 w-16 shrink-0">District</dt>
+                  <dd className="text-slate-600">{incident.districtName ?? 'unknown'}</dd>
+                </div>
+                <div className="flex gap-2">
+                  <dt className="text-slate-400 w-16 shrink-0">Location</dt>
+                  <dd className="text-slate-600 tabular">
+                    {incident.latitude.toFixed(4)}, {incident.longitude.toFixed(4)}
+                  </dd>
+                </div>
+                <div className="flex gap-2">
+                  <dt className="text-slate-400 w-16 shrink-0">Reported</dt>
+                  <dd className="text-slate-600 truncate">
+                    {incident.reportedByName ?? 'unknown'} &middot;{' '}
+                    {formatDateTime(incident.occurredAt)}
+                  </dd>
+                </div>
+              </dl>
+
+              <div className="mt-3.5 pt-3 border-t border-slate-100 flex items-center
+                              justify-between">
+                <StatusBadge value={incident.status} dot={false} />
+                {canVerify && incident.status === 'REPORTED' && (
+                  <button className="btn-ghost py-1 px-2.5 text-xs"
+                          onClick={() => void verify(incident.id)}>
+                    Verify
+                  </button>
+                )}
+              </div>
+            </div>
+          ))}
         </div>
       )}
     </div>

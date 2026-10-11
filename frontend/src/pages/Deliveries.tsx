@@ -2,8 +2,12 @@ import { useCallback, useEffect, useState } from 'react'
 import { deliveriesApi } from '../services/endpoints'
 import { useAuth } from '../context/AuthContext'
 import { errorMessage } from '../services/api'
+import {
+  EmptyState, ErrorNote, FilterBar, PageHeader, SkeletonRows, StatusBadge, TableCard,
+} from '../components/ui'
+import { IconPackage } from '../components/icons'
 import type { Delivery, DeliveryStatus } from '../types'
-import { deliveryBadge, formatDateTime, humanise } from '../utils/format'
+import { formatDateTime, humanise } from '../utils/format'
 
 /**
  * Consignments.
@@ -19,6 +23,8 @@ const NEXT_STATUSES: Record<DeliveryStatus, DeliveryStatus[]> = {
   DELAYED: ['IN_TRANSIT', 'DELIVERED'],
   DELIVERED: [],
 }
+
+const FILTERS: (DeliveryStatus | '')[] = ['', 'CREATED', 'IN_TRANSIT', 'DELAYED', 'DELIVERED']
 
 export default function Deliveries() {
   const { hasRole } = useAuth()
@@ -53,75 +59,105 @@ export default function Deliveries() {
     }
   }
 
-  return (
-    <div className="space-y-4">
-      <div className="flex items-end justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight text-slate-900">
-            {isDriverOnly ? 'My deliveries' : 'Deliveries'}
-          </h1>
-          <p className="text-sm text-slate-500">Consignments moving across the region</p>
-        </div>
-        {!isDriverOnly && (
-          <select
-            className="input w-52"
-            value={filter}
-            onChange={(e) => setFilter(e.target.value as DeliveryStatus | '')}
-          >
-            <option value="">All statuses</option>
-            <option value="CREATED">Created</option>
-            <option value="IN_TRANSIT">In transit</option>
-            <option value="DELAYED">Delayed</option>
-            <option value="DELIVERED">Delivered</option>
-          </select>
-        )}
-      </div>
+  const delayed = deliveries.filter((d) => d.status === 'DELAYED').length
 
-      {error && (
-        <div className="rounded-lg bg-red-50 border border-red-200 px-3 py-2 text-sm text-red-700">
-          {error}
-        </div>
+  return (
+    <div className="space-y-5">
+      <PageHeader
+        title={isDriverOnly ? 'My deliveries' : 'Deliveries'}
+        subtitle={
+          delayed > 0
+            ? `${deliveries.length} consignment(s) · ${delayed} delayed`
+            : `${deliveries.length} consignment(s) moving across the region`
+        }
+      />
+
+      {!isDriverOnly && (
+        <FilterBar>
+          {FILTERS.map((f) => (
+            <button
+              key={f || 'all'}
+              onClick={() => setFilter(f)}
+              className={
+                'badge transition ' +
+                (filter === f
+                  ? 'bg-slate-900 text-white border-slate-900'
+                  : 'bg-white text-slate-600 border-slate-300 hover:border-slate-400')
+              }
+            >
+              {f ? humanise(f) : 'All'}
+            </button>
+          ))}
+        </FilterBar>
       )}
 
-      <div className="card p-0 overflow-hidden">
-        <table className="w-full">
-          <thead className="bg-slate-50">
-            <tr>
-              <th className="th">Tracking</th>
-              <th className="th">Route</th>
-              <th className="th">Goods</th>
-              <th className="th">Vehicle</th>
-              <th className="th">ETA</th>
-              <th className="th">Delay</th>
-              <th className="th">Status</th>
-              <th className="th">Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {deliveries.map((delivery) => (
-              <tr key={delivery.id} className="hover:bg-slate-50">
-                <td className="td font-mono text-xs">{delivery.trackingCode}</td>
-                <td className="td">
-                  {delivery.sourceDistrictName} to {delivery.destinationDistrictName}
-                </td>
-                <td className="td">{humanise(delivery.goodsType)}</td>
-                <td className="td">{delivery.vehicleNumber ?? 'Unassigned'}</td>
-                <td className="td">{formatDateTime(delivery.eta)}</td>
-                <td className="td">
-                  {delivery.delayMinutes > 0 ? (
-                    <span className="text-red-600">{delivery.delayMinutes} min</span>
-                  ) : (
-                    '-'
-                  )}
-                </td>
-                <td className="td">
-                  <span className={'badge ' + deliveryBadge(delivery.status)}>
-                    {humanise(delivery.status)}
+      {error && <ErrorNote message={error} />}
+
+      <TableCard
+        isEmpty={!loading && deliveries.length === 0}
+        empty={
+          <EmptyState
+            icon={<IconPackage />}
+            title={filter ? `No ${humanise(filter).toLowerCase()} deliveries` : 'No deliveries yet'}
+            body={
+              isDriverOnly
+                ? 'Consignments assigned to your vehicle will appear here.'
+                : 'A logistics manager can create a consignment and assign a vehicle to it.'
+            }
+          />
+        }
+        footer={deliveries.length > 0
+          ? 'Only transitions the backend accepts are offered; an illegal move returns 422.'
+          : undefined}
+        head={
+          <>
+            <th className="th">Tracking</th>
+            <th className="th">Route</th>
+            <th className="th">Goods</th>
+            <th className="th">Vehicle</th>
+            <th className="th">ETA</th>
+            <th className="th">Delay</th>
+            <th className="th">Status</th>
+            <th className="th">Advance</th>
+          </>
+        }
+      >
+        {loading ? (
+          <SkeletonRows rows={5} cols={8} />
+        ) : (
+          deliveries.map((delivery) => (
+            <tr key={delivery.id} className="row-hover">
+              <td className="td font-mono text-xs text-slate-900">{delivery.trackingCode}</td>
+              <td className="td">
+                <span className="flex items-center gap-1.5 whitespace-nowrap">
+                  <span>{delivery.sourceDistrictName}</span>
+                  <span className="text-slate-300">&rarr;</span>
+                  <span className="font-medium text-slate-900">
+                    {delivery.destinationDistrictName}
                   </span>
-                </td>
-                <td className="td">
-                  <div className="flex gap-1">
-                    {NEXT_STATUSES[delivery.status].map((next) => (
+                </span>
+              </td>
+              <td className="td">{humanise(delivery.goodsType)}</td>
+              <td className="td font-mono text-xs">
+                {delivery.vehicleNumber ?? <span className="text-slate-400">Unassigned</span>}
+              </td>
+              <td className="td text-slate-500 whitespace-nowrap">
+                {formatDateTime(delivery.eta)}
+              </td>
+              <td className="td tabular">
+                {delivery.delayMinutes > 0 ? (
+                  <span className="text-red-600 font-medium">+{delivery.delayMinutes}m</span>
+                ) : (
+                  <span className="text-slate-400">-</span>
+                )}
+              </td>
+              <td className="td"><StatusBadge value={delivery.status} /></td>
+              <td className="td">
+                <div className="flex gap-1">
+                  {NEXT_STATUSES[delivery.status].length === 0 ? (
+                    <span className="text-xs text-slate-400">complete</span>
+                  ) : (
+                    NEXT_STATUSES[delivery.status].map((next) => (
                       <button
                         key={next}
                         className="btn-ghost py-1 px-2 text-xs"
@@ -129,17 +165,14 @@ export default function Deliveries() {
                       >
                         {humanise(next)}
                       </button>
-                    ))}
-                  </div>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        {!loading && deliveries.length === 0 && (
-          <p className="p-6 text-sm text-slate-500">No deliveries match this filter.</p>
+                    ))
+                  )}
+                </div>
+              </td>
+            </tr>
+          ))
         )}
-      </div>
+      </TableCard>
     </div>
   )
 }
