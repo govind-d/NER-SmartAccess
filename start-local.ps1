@@ -4,13 +4,23 @@
 #  No Docker: PostgreSQL 17 + PostGIS runs from E:\workspace\pgsql17 against the
 #  cluster in E:\workspace\pgdata. See docs/localhost-setup.md.
 #
-#  Usage:   .\start-local.ps1
-#           .\start-local.ps1 -Stop        (shut everything down)
-#           .\start-local.ps1 -Build       (rebuild the frontend first)
+#  Usage:   .\start-local.ps1                 dev server: hot reload, no service worker
+#           .\start-local.ps1 -Preview        serves dist/: service worker active,
+#                                             no hot reload. Implies -Build unless
+#                                             dist/ already exists.
+#           .\start-local.ps1 -Preview -Build force a rebuild, then serve dist/
+#           .\start-local.ps1 -Build          rebuild, then run the dev server
+#           .\start-local.ps1 -Stop           shut everything down
+#
+#  Why two modes: Vite's dev server deliberately does not serve the generated
+#  sw.js, because module-level HMR and service-worker caching fight each other.
+#  Offline *queuing* works in both modes (that is IndexedDB), but an offline cold
+#  load of the app shell only works under -Preview.
 # =============================================================
 param(
     [switch]$Stop,
-    [switch]$Build
+    [switch]$Build,
+    [switch]$Preview
 )
 
 $ErrorActionPreference = 'Stop'
@@ -77,45 +87,78 @@ if ($LASTEXITCODE -ne 0) {
 if ($LASTEXITCODE -ne 0) { throw 'PostgreSQL did not come up - see E:\workspace\pgdata\server.log' }
 
 # ---------------------------------------------------------------- 2. backend
-"2/3  Spring Boot backend on $backendPort"
-$env:MAVEN_OPTS = '-Xms64m -Xmx512m -XX:+UseSerialGC'
-$backendLog = Join-Path $LogDir 'backend.log'
-Remove-Item $backendLog -ErrorAction SilentlyContinue
-Start-Process -FilePath $Mvn `
-    -ArgumentList '-B', 'spring-boot:run', '-Dspring-boot.run.profiles=dev' `
-    -WorkingDirectory (Join-Path $Root 'backend') `
-    -RedirectStandardOutput $backendLog `
-    -RedirectStandardError (Join-Path $LogDir 'backend.err.log') `
-    -WindowStyle Hidden
+# Re-running this script must not start a second backend against a port that is
+# already taken, so an instance that is already healthy is left alone.
+$backendUp = $false
+try {
+    Invoke-WebRequest "http://localhost:$backendPort/actuator/health" -TimeoutSec 3 `
+        -UseBasicParsing | Out-Null
+    $backendUp = $true
+} catch { }
 
-for ($i = 0; $i -lt 60; $i++) {
-    Start-Sleep -Seconds 3
-    if (Test-Path $backendLog) {
-        $text = Get-Content $backendLog -Raw -ErrorAction SilentlyContinue
-        if ($text -match 'Started NerSmartLogixApplication') { break }
-        if ($text -match 'APPLICATION FAILED TO START|BUILD FAILURE') {
-            Get-Content $backendLog -Tail 25
-            throw 'Backend failed to start.'
+if ($backendUp) {
+    "2/3  Spring Boot backend on $backendPort - already running, left alone"
+} else {
+    "2/3  Spring Boot backend on $backendPort"
+    $env:MAVEN_OPTS = '-Xms64m -Xmx512m -XX:+UseSerialGC'
+    $backendLog = Join-Path $LogDir 'backend.log'
+    Remove-Item $backendLog -ErrorAction SilentlyContinue
+    Start-Process -FilePath $Mvn `
+        -ArgumentList '-B', 'spring-boot:run', '-Dspring-boot.run.profiles=dev' `
+        -WorkingDirectory (Join-Path $Root 'backend') `
+        -RedirectStandardOutput $backendLog `
+        -RedirectStandardError (Join-Path $LogDir 'backend.err.log') `
+        -WindowStyle Hidden
+
+    for ($i = 0; $i -lt 60; $i++) {
+        Start-Sleep -Seconds 3
+        if (Test-Path $backendLog) {
+            $text = Get-Content $backendLog -Raw -ErrorAction SilentlyContinue
+            if ($text -match 'Started NerSmartLogixApplication') { break }
+            if ($text -match 'APPLICATION FAILED TO START|BUILD FAILURE') {
+                Get-Content $backendLog -Tail 25
+                throw 'Backend failed to start.'
+            }
         }
     }
 }
 
 # ---------------------------------------------------------------- 3. frontend
-if ($Build) {
-    '     rebuilding the frontend bundle'
-    Push-Location (Join-Path $Root 'frontend')
+$frontendDir = Join-Path $Root 'frontend'
+$distIndex   = Join-Path $frontendDir 'dist\index.html'
+
+# -Preview needs a bundle to serve, so build if one is missing or a build was asked for.
+$needsBuild = $Build -or ($Preview -and -not (Test-Path $distIndex))
+if ($needsBuild) {
+    '     building the frontend bundle'
+    Push-Location $frontendDir
     npm run build
+    if ($LASTEXITCODE -ne 0) { Pop-Location; throw 'Frontend build failed.' }
     Pop-Location
 }
 
-"3/3  Frontend on $frontendPort"
+$mode = if ($Preview) { 'preview (service worker active, no hot reload)' }
+        else { 'dev server (hot reload, no service worker)' }
+"3/3  Frontend on $frontendPort - $mode"
+
 $viteLog = Join-Path $LogDir 'frontend.log'
 Remove-Item $viteLog -ErrorAction SilentlyContinue
-# The dev server gives hot reload; it needs roughly 400 MB, so on a machine that is
-# short of memory swap `vite` for `vite preview` (serves the built dist/ instead).
+
+# Unlike the backend, the frontend is always restarted: the requested mode may differ
+# from whatever is currently serving, and that switch is the whole point of -Preview.
+Stop-OnPort $frontendPort 'previous frontend'
+
+# `vite preview` is a plain static server over dist/. It serves the generated sw.js,
+# which the dev server deliberately does not, and uses a fraction of the memory.
+$viteArgs = if ($Preview) {
+    @('vite', 'preview', '--port', "$frontendPort", '--strictPort')
+} else {
+    @('vite', '--port', "$frontendPort", '--strictPort')
+}
+
 Start-Process -FilePath 'C:\Program Files\nodejs\npx.cmd' `
-    -ArgumentList 'vite', '--port', "$frontendPort", '--strictPort' `
-    -WorkingDirectory (Join-Path $Root 'frontend') `
+    -ArgumentList $viteArgs `
+    -WorkingDirectory $frontendDir `
     -RedirectStandardOutput $viteLog `
     -RedirectStandardError (Join-Path $LogDir 'frontend.err.log') `
     -WindowStyle Hidden
@@ -138,7 +181,34 @@ foreach ($svc in @(
         "$($svc.n)  $($svc.u) -> HTTP $($r.StatusCode)"
     } catch { "$($svc.n)  $($svc.u) -> DOWN" }
 }
+
+# Under -Preview the generated service worker should be reachable. If it is not, the
+# offline shell will silently not work, so say so here rather than let it be assumed.
+if ($Preview) {
+    try {
+        $sw = Invoke-WebRequest "http://localhost:$frontendPort/sw.js" -TimeoutSec 5 -UseBasicParsing
+        # A status check alone would lie here: Vite answers an unknown path with
+        # index.html, so a missing sw.js still returns 200 - as HTML. The content type
+        # is what actually distinguishes a real worker from the SPA fallback.
+        $type = $sw.Headers['Content-Type']
+        if ($type -match 'javascript') {
+            "service worker  /sw.js -> HTTP $($sw.StatusCode), $type ($($sw.RawContentLength) bytes)"
+        } else {
+            "service worker  /sw.js -> served as $type, NOT JavaScript."
+            "                The bundle is missing; re-run with -Preview -Build."
+        }
+    } catch {
+        "service worker  /sw.js -> NOT SERVED (offline shell will not work)"
+    }
+}
 '================================================================'
+"Mode   $mode"
 "Open   http://localhost:$frontendPort"
 "Logs   $LogDir"
 'Stop   .\start-local.ps1 -Stop'
+if ($Preview) {
+    'Note   test the offline shell in Chrome or Edge: DevTools > Application >'
+    '       Service Workers, then Network > Offline and hard-refresh.'
+} else {
+    'Note   no service worker in this mode. Use -Preview to test offline loading.'
+}
