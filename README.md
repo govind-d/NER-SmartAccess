@@ -33,6 +33,7 @@ An AI-powered Smart Logistics and Accessibility Intelligence Platform for the No
 * Incident chain: a CRITICAL landslide report auto-matched its road and district, flipped the road to **BLOCKED**, and raised two alerts
 * Offline idempotency: the same `clientUuid` sent three times produced **one** incident; batch sync reports `accepted` then `duplicates`
 * Frontend: dashboard with 12 cards and 4 charts, map with 29 GeoJSON paths and live vehicle markers, STOMP connected, alerts pushed to the browser with no refresh
+* PWA: the generated service worker **registers and activates in Chrome**, precaching the app shell (5 entries) with OpenStreetMap tiles cached `CacheFirst` for 14 days. Serve the bundle with `.\start-local.ps1 -Preview` — Vite's dev server deliberately does not serve `sw.js`
 
 ---
 
@@ -74,27 +75,49 @@ Set `DB_PASSWORD` (identical in both), `JWT_SECRET` and `SEED_DEMO_PASSWORD`:
 openssl rand -base64 64
 ```
 
-**3. Database** — the verified no-Docker path is in [docs/localhost-setup.md](docs/localhost-setup.md). With Docker:
+**3. Install the frontend dependencies** (once):
 
 ```bash
-docker compose up -d postgis
+cd frontend && npm install
 ```
 
-**4. Backend**
+**4. Start everything** — one command brings up PostgreSQL, the backend and the frontend, waits out WAL recovery after an unclean shutdown, and prints a status table:
+
+```powershell
+.\start-local.ps1
+```
+
+| Command | What you get |
+|---|---|
+| `.\start-local.ps1` | Dev server — hot reload, **no** service worker |
+| `.\start-local.ps1 -Preview` | Serves `dist/` — service worker active, no hot reload |
+| `.\start-local.ps1 -Preview -Build` | Force a rebuild, then serve it |
+| `.\start-local.ps1 -Stop` | Shut the stack down |
+
+Re-running it is safe: a healthy backend is left alone, and only the frontend is restarted so the mode can change.
+
+* App: http://localhost:5174
+* Swagger UI: http://localhost:8081/swagger-ui.html
+* Health: http://localhost:8081/actuator/health
+* Logs: `logs/`
+
+> **Ports.** The defaults in the committed config are 8080 and 5173. On the machine this
+> was developed on both were taken, so `SERVER_PORT=8081` sits in `backend/.env` and
+> `VITE_BACKEND_URL` in `frontend/.env.local` (both git-ignored). Keep `FRONTEND_ORIGIN`
+> in `backend/.env` matching whichever port Vite reports, or the STOMP handshake is
+> rejected.
+
+### Starting the pieces by hand
+
+PostgreSQL is covered in [docs/localhost-setup.md](docs/localhost-setup.md). Then:
 
 ```bash
 cd backend && ./run-dev.ps1
 ```
 
-**5. Frontend**
-
 ```bash
-cd frontend && npm install && npm run dev
+cd frontend && npm run dev
 ```
-
-* App: http://localhost:5173 (5174 if 5173 is taken — keep `FRONTEND_ORIGIN` in `backend/.env` in sync)
-* Swagger UI: http://localhost:8080/swagger-ui.html
-* Health: http://localhost:8080/actuator/health
 
 ### Everything in Docker
 
@@ -170,6 +193,8 @@ NER-SmartAccess/
 │   │   └── utils/       IndexedDB offline store, formatting
 │   ├── Dockerfile, nginx.conf, vite.config.ts (PWA)
 ├── docs/
+├── start-local.ps1        one-command launcher (-Preview / -Build / -Stop)
+├── logs/                  backend and frontend output (git-ignored)
 ├── docker-compose.yml
 └── .env.example
 ```
